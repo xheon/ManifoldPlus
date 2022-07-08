@@ -151,8 +151,10 @@ void MeshProjector::SplitVertices() {
 		}
 	}
 	out_V_.conservativeResize(num_vertices, 3);
+	out_VC_.conservativeResize(num_vertices, 3);
 	for (auto& p : insert_vertex_info) {
 		out_V_.row(p.first) = out_V_.row(p.second);
+		out_VC_.row(p.first) = out_VC_.row(p.second);
 	}
 	num_V_ = num_vertices;
 }
@@ -191,18 +193,22 @@ void MeshProjector::ComputeIndependentSet() {
 	}	
 }
 
-void MeshProjector::Project(const MatrixD& V, const MatrixI& F,
-	MatrixD* out_V, MatrixI* out_F)
+void MeshProjector::Project(const MatrixD& V, const MatrixD& VC, const MatrixI& F,
+	MatrixD* out_V, MatrixD* out_VC, MatrixI* out_F)
 {
 	V_ = V;
+	VC_ = VC;
 	F_ = F;
 	out_V_ = *out_V;
+	out_VC_ = *out_VC;
 	out_F_ = *out_F;
 
 	FT len = (out_V_.row(out_F_(0,0)) - out_V_.row(out_F_(0,1))).norm();
 
 	num_F_ = out_F_.rows();
 	num_V_ = out_V_.rows();
+
+	printf("V_.rows(): %d, outV_.rows(): %d\n", V_.rows(), out_V_.rows());
 
 	printf("Initialize AABB Tree...\n");
 	tree_.init(V_,F_);
@@ -220,13 +226,32 @@ void MeshProjector::Project(const MatrixD& V, const MatrixI& F,
 	printf("Sharp preservation...\n");
 	AdaptiveRefine(len, 1e-3);
 
+	// Assign colors?
+	UpdateNearestDistance();
+	//tree_.squared_distance(V_,F_,out_V_,sqrD_,I_,target_V_);
+    for (int i = 0; i < num_V_; ++i)
+    {
+        const int face_index = I_[i];
+        const Vector3i& closest_face = F_.row(face_index);
+        const int vertex_index = closest_face[0];
+        const Vector3 vertex_color = VC_.row(vertex_index);
+        out_VC_.row(i) = vertex_color;
+
+        if (i == 0)
+        {
+            printf("---> face_index: %d, vertex indices: %d %d %d, vertex color: %f %f %f\n", face_index, closest_face[0], closest_face[1], closest_face[2], vertex_color[0], vertex_color[1], vertex_color[2]);
+        }
+    }
+
 	std::vector<int> vertex_mapping(num_V_, -1);
 	out_V->conservativeResize(num_V_, 3);
+	out_VC->conservativeResize(num_V_, 3);
 	out_F->conservativeResize(num_F_, 3);
 	int num_v = 0, num_f = 0;
 	for (int i = 0; i < num_V_; ++i) {
 		if (V2E_[i] > -1) {
 			out_V->row(num_v) = out_V_.row(i);
+			out_VC->row(num_v) = out_VC_.row(i);
 			vertex_mapping[i] = num_v;
 			num_v += 1;
 		}
@@ -240,7 +265,9 @@ void MeshProjector::Project(const MatrixD& V, const MatrixI& F,
 		}
 	}
 	out_V->conservativeResize(num_v, 3);
-	out_F->conservativeResize(num_f, 3);	
+	out_VC->conservativeResize(num_v, 3);
+	out_F->conservativeResize(num_f, 3);
+
 }
 
 void MeshProjector::UpdateNearestDistance()
@@ -352,8 +379,10 @@ void MeshProjector::IterativeOptimize(FT len, bool initialized) {
 	printf("Gauss-seidel update...\n");
 	if (!initialized) {
 		indices_.resize(num_V_);
+		printf("Gauss-seidel init with %d\n", num_V_);
 		UpdateVertexNormals(1);
 		UpdateNearestDistance();
+
 		igl::per_face_normals(out_V_, out_F_, out_FN_);
 		active_vertices_.resize(num_V_);
 		active_vertices_temp_.resize(num_V_);
@@ -484,7 +513,7 @@ void MeshProjector::Highlight(int id, FT len) {
 	printf("Max distance %lf\n", max_dis / len);
  	char buffer[1024];
  	sprintf(buffer, "%05d-tri.obj", id);
- 	WriteOBJ(buffer, out_V_, out_F_);
+ 	WriteOBJ(buffer, out_V_, out_VC_, out_F_);
  	sprintf(buffer, "%05d-point.obj", id);
  	std::ofstream os(buffer);
  	for (int i = 0; i < sqrD_.size(); ++i) {
@@ -523,10 +552,11 @@ void MeshProjector::AdaptiveRefine(FT len, FT ratio) {
 			max_dis = dis;
 	}
 	
-	auto AddVertex = [&](const Vector3& p, const Vector3& n,
+	auto AddVertex = [&](const Vector3& p, const Vector3& c, const Vector3& n,
 		const Vector3& tar_p, const FT& sqr_dis, int face_index, int sharp) {
 		if (num_V_ >= out_V_.rows()) {
 			out_V_.conservativeResize(out_V_.rows() * 2, 3);
+			out_VC_.conservativeResize(out_VC_.rows() * 2, 3);
 			out_N_.conservativeResize(out_N_.rows() * 2, 3);
 			target_V_.conservativeResize(target_V_.rows() * 2, 3);
 			sqrD_.conservativeResize(sqrD_.rows() * 2);
@@ -537,6 +567,7 @@ void MeshProjector::AdaptiveRefine(FT len, FT ratio) {
 			sharp_vertices_.resize(sharp_vertices_.size() * 2);
 		}
 		out_V_.row(num_V_) = p;
+		out_VC_.row(num_V_) = c;
 		out_N_.row(num_V_) = n;
 		target_V_.row(num_V_) = tar_p;
 		sqrD_[num_V_] = sqr_dis;
@@ -655,7 +686,7 @@ void MeshProjector::AdaptiveRefine(FT len, FT ratio) {
 			}
 
 			int v0 = out_F_(deid / 3, deid % 3);
-			AddVertex(P.row(i), out_N_.row(v0), targetP.row(i),
+			AddVertex(P.row(i), out_VC_.row(i), out_N_.row(v0), targetP.row(i),
 				sqrD[i], I[i], sharp[i]);
 		}
 

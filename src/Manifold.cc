@@ -16,24 +16,33 @@ Manifold::~Manifold()
 	tree_ = 0;
 }
 
-void Manifold::ProcessManifold(const MatrixD& V, const MatrixI& F,
-	int depth, MatrixD* out_V, MatrixI* out_F)
+void Manifold::ProcessManifold(const MatrixD& V, const MatrixD& VC, const MatrixI& F,
+	int depth, MatrixD* out_V, MatrixD* out_VC, MatrixI* out_F)
 {
 	V_ = V;
+	VC_ = VC;
 	F_ = F;
 
+	printf("Construct tree\n");
 	BuildTree(depth);
+
+	printf("Construct manifold\n");
 	ConstructManifold();
 
 	*out_V = MatrixD(vertices_.size(), 3);
+	*out_VC = MatrixD(vertices_.size(), 3);
 	*out_F = MatrixI(face_indices_.size(), 3);
 	for (int i = 0; i < vertices_.size(); ++i)
 		out_V->row(i) = vertices_[i];
+    for (int i = 0; i < vertex_colors_.size(); ++i)
+		out_VC->row(i) = vertex_colors_[i];
 	for (int i = 0; i < face_indices_.size(); ++i)
 		out_F->row(i) = face_indices_[i];
 
 	MeshProjector projector;
-	projector.Project(V_, F_, out_V, out_F);
+    printf("Project\n");
+
+	projector.Project(V_, VC_, F_, out_V, out_VC, out_F);
 }
 
 void Manifold::BuildTree(int depth)
@@ -42,7 +51,7 @@ void Manifold::BuildTree(int depth)
 	tree_ = new Octree(min_corner_, max_corner_, F_);
 
 	for (int iter = 0; iter < depth; ++iter) {
-		tree_->Split(V_);
+		tree_->Split(V_, VC_);
 	}
 
 	tree_->BuildConnection();
@@ -110,13 +119,21 @@ void Manifold::ConstructManifold()
 {
 	std::map<GridIndex,int> vcolor;
 	std::vector<Vector3> nvertices;
+	std::vector<Vector3> nvertex_colors;
 	std::vector<Vector4i> nface_indices;
 	std::vector<Vector3i> triangles;
 	std::vector<std::set<int> > v_faces;
-	tree_->ConstructFace(Vector3i(0,0,0), &vcolor, &nvertices,
+
+    printf("ConstructManifold -> %d verts, %d colors\n", nvertices.size(), nvertex_colors.size());
+    printf("ConstructFace\n");
+	tree_->ConstructFace(Vector3i(0,0,0), &vcolor, &nvertices, &nvertex_colors,
 		&nface_indices, &v_faces);
 
-	SplitGrid(nface_indices, vcolor, nvertices, v_faces, triangles);
+    const Vector3& example_color = nvertex_colors[0];
+    printf("example color: %f, %f, %f\n", example_color[0], example_color[1], example_color[2]);
+
+    printf("SplitGrid, nvertices %d\n", nvertices.size());
+	SplitGrid(nface_indices, vcolor, nvertices, nvertex_colors, v_faces, triangles);
 	std::vector<int> hash_v(nvertices.size(),0);
 	for (int i = 0; i < (int)triangles.size(); ++i)
 	{
@@ -126,7 +143,9 @@ void Manifold::ConstructManifold()
 		}
 	}
 	vertices_.clear();
-	for (int i = 0; i < (int)hash_v.size(); ++i)
+	vertex_colors_.clear();
+    printf("Iterate hash_v\n");
+    for (int i = 0; i < (int)hash_v.size(); ++i)
 	{
 		if (hash_v[i])
 		{
@@ -134,9 +153,12 @@ void Manifold::ConstructManifold()
 			//v_faces[vertices_.size()] = v_faces[i];
 			//v_info_[vertices_.size()] = v_info_[i];
 			vertices_.push_back(nvertices[i]);
+			vertex_colors_.push_back(nvertex_colors[i]);
 		}
 	}
-	for (int i = 0; i < (int)triangles.size(); ++i)
+
+    printf("Iterate hash_v -> %d\n", vertex_colors_.size());
+    for (int i = 0; i < (int)triangles.size(); ++i)
 	{
 		for (int j = 0; j < 3; ++j)
 		{
@@ -150,6 +172,7 @@ bool Manifold::SplitGrid(
 	const std::vector<Vector4i>& nface_indices,
 	std::map<GridIndex,int>& vcolor,
 	std::vector<Vector3>& nvertices,
+	std::vector<Vector3>& nvertex_colors,
 	std::vector<std::set<int> >& v_faces,
 	std::vector<Vector3i>& triangles)
 {
@@ -162,6 +185,8 @@ bool Manifold::SplitGrid(
 	}
 	std::set<int> marked_v;
 	std::map<std::pair<int, int>, std::list<std::pair<int, int> > > edge_info;
+    printf("Construct edges\n");
+
 	for (int i = 0; i < (int)nface_indices.size(); ++i)
 	{
 		for (int j = 0; j < 4; ++j)
@@ -198,6 +223,7 @@ bool Manifold::SplitGrid(
 	triangles.clear();
 	FT half_len = (nvertices[nface_indices[0][1]]
 		- nvertices[nface_indices[0][0]]).norm() * 0.5;
+	printf("Iterate faces\n");
 	for (int i = 0; i < (int)nface_indices.size(); ++i)
 	{
 		int t = 0;
@@ -229,6 +255,7 @@ bool Manifold::SplitGrid(
 			v_info_.push_back(pt1);
 			ind1 = (int)nvertices.size();
 			nvertices.push_back((nvertices[ind[0]]+nvertices[ind[1]])*0.5);
+			nvertex_colors.push_back((nvertex_colors[ind[0]]+nvertex_colors[ind[1]])*0.5);
 			v_faces.push_back(v_faces[ind[0]]);
 		}
 		else {
@@ -242,6 +269,7 @@ bool Manifold::SplitGrid(
 			ind2 = (int)nvertices.size();
 			v_faces.push_back(v_faces[ind[0]]);
 			nvertices.push_back((nvertices[ind[0]]+nvertices[ind[3]])*0.5);
+			nvertex_colors.push_back((nvertex_colors[ind[0]]+nvertex_colors[ind[3]])*0.5);
 		} else {
 			ind2 = it->second;
 		}
@@ -254,6 +282,7 @@ bool Manifold::SplitGrid(
 				v_info_.push_back(pt4);
 				ind4 = (int)nvertices.size();
 				nvertices.push_back((nvertices[ind[1]]+nvertices[ind[2]])*0.5);
+				nvertex_colors.push_back((nvertex_colors[ind[1]]+nvertex_colors[ind[2]])*0.5);
 				if (flag1)
 					v_faces.push_back(v_faces[ind[1]]);
 				else
@@ -270,6 +299,7 @@ bool Manifold::SplitGrid(
 				v_info_.push_back(pt3);
 				ind3 = (int)nvertices.size();
 				nvertices.push_back((nvertices[ind[2]]+nvertices[ind[3]])*0.5);
+				nvertex_colors.push_back((nvertex_colors[ind[2]]+nvertex_colors[ind[3]])*0.5);
 				if (flag2)
 					v_faces.push_back(v_faces[ind[2]]);
 				else
@@ -330,6 +360,7 @@ bool Manifold::SplitGrid(
 		it != marked_v.end(); ++it)
 	{
 		Vector3 p = nvertices[*it];
+		Vector3 c = nvertex_colors[*it];
 		for (int dimx = -1; dimx < 2; dimx += 2) {
 			for (int dimy = -1; dimy < 2; dimy += 2) {
 				for (int dimz = -1; dimz < 2; dimz += 2) {
@@ -352,6 +383,7 @@ bool Manifold::SplitGrid(
 
 							nvertices.push_back(Vector3(
 								p[0]+half_len*dimx,p[1], p[2]));
+                            nvertex_colors.push_back(c);
 							v_faces.push_back(v_faces[*it]);
 						}
 						if (vcolor.find(ind2) == vcolor.end())
@@ -362,6 +394,8 @@ bool Manifold::SplitGrid(
 
 							nvertices.push_back(Vector3(
 								p[0],p[1]+half_len*dimy,p[2]));
+                            nvertex_colors.push_back(c);
+
 							v_faces.push_back(v_faces[*it]);
 						}
 						if (vcolor.find(ind3) == vcolor.end())
@@ -372,6 +406,7 @@ bool Manifold::SplitGrid(
 
 							nvertices.push_back(Vector3(
 								p[0],p[1],p[2]+half_len*dimz));
+							nvertex_colors.push_back(c);
 							v_faces.push_back(v_faces[*it]);
 						}
 						int id1 = vcolor[ind1];
@@ -492,6 +527,7 @@ bool Manifold::SplitGrid(
 		nvertices[i] += dir * (0.5 * unit_len);
 		v_faces.push_back(v_faces[i]);
 		nvertices.push_back(nvertices[i]);
+		nvertex_colors.push_back(nvertex_colors[i]);
 		nvertices.back() -= unit_len * dir;
 
 	}
@@ -540,6 +576,7 @@ bool Manifold::SplitGrid(
 			nvertices[i] += dir * (0.5 * len);
 			v_faces.push_back(v_faces[i]);
 			nvertices.push_back(nvertices[i]);
+			nvertex_colors.push_back(nvertex_colors[i]);
 			nvertices.back() -= len * dir;
 		}
 	}

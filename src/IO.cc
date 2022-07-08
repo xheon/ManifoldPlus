@@ -4,7 +4,7 @@
 #include <fstream>
 #include <vector>
 
-void ReadOBJ(const char* filename, MatrixD* V, MatrixI* F) {
+void ReadOBJ(const char* filename, MatrixD* V, MatrixD* VC, MatrixI* F) {
 	int len = strlen(filename);
 	if (strcmp(filename + (len - 3), "off") == 0) {
 		igl::readOFF(filename, *V, *F);
@@ -13,12 +13,17 @@ void ReadOBJ(const char* filename, MatrixD* V, MatrixI* F) {
 	char buffer[1024];
 	std::ifstream is(filename);
 	std::vector<Vector3> vertices;
+	std::vector<Vector3> vertex_colors;
 	std::vector<Vector3i> faces;
 	while (is >> buffer) {
 		if (strcmp(buffer, "v") == 0) {
 			Vector3 v;
 			is >> v[0] >> v[1] >> v[2];
 			vertices.push_back(v);
+
+            Vector3 vc;
+            is >> vc[0] >> vc[1] >> vc[2];
+            vertex_colors.push_back(vc);
 		}
 		if (strcmp(buffer, "f") == 0) {
 			Vector3i f;
@@ -39,13 +44,17 @@ void ReadOBJ(const char* filename, MatrixD* V, MatrixI* F) {
 	F->resize(faces.size(), 3);
 	memcpy(V->data(), vertices.data(), sizeof(Vector3) * vertices.size());
 	memcpy(F->data(), faces.data(), sizeof(Vector3i) * faces.size());
+
+    VC->resize(vertices.size(), 3);
+    memcpy(VC->data(), vertex_colors.data(), sizeof(Vector3) * vertices.size());
 }
 
-void WriteOBJ(const char* filename, const MatrixD& V, const MatrixI& F) {
+void WriteOBJ(const char* filename, const MatrixD& V, const MatrixD& VC, const MatrixI& F) {
 	std::ofstream os(filename);
 	for (int i = 0; i < V.rows(); ++i) {
 		auto& v = V.row(i);
-		os << "v " << v[0] << " " << v[1] << " " << v[2] << "\n";
+		auto& vc = VC.row(i);
+		os << "v " << v[0] << " " << v[1] << " " << v[2] << " " << vc[0] << " " << vc[1] << " " << vc[2] << "\n";
 	}
 	for (int i = 0; i < F.rows(); ++i) {
 		auto& f = F.row(i);

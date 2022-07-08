@@ -15,17 +15,18 @@ int main(int argc, char**argv) {
 	parser.Log();
 
 	MatrixD V, out_V;
+	MatrixD VC, out_VC;
 	MatrixI F, out_F;
-	ReadOBJ(parser["input"].c_str(), &V, &F);
+	ReadOBJ(parser["input"].c_str(), &V, &VC, &F);
 
 	printf("vertex number: %d    face number: %d\n", V.rows(), F.rows());
 	int depth = 0;
 	sscanf(parser["depth"].c_str(), "%d", &depth);
 
 	Manifold manifold;
-	manifold.ProcessManifold(V, F, depth, &out_V, &out_F);
+	manifold.ProcessManifold(V, VC, F, depth, &out_V, &out_VC, &out_F);
 
-	WriteOBJ(parser["output"].c_str(), out_V, out_F);
+	WriteOBJ(parser["output"].c_str(), out_V, out_VC, out_F);
 
 	return 0;
 }

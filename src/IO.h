@@ -3,7 +3,7 @@
 
 #include "types.h"
 
-void ReadOBJ(const char* filename, MatrixD* V, MatrixI* F);
-void WriteOBJ(const char* filename, const MatrixD& V, const MatrixI& F);
+void ReadOBJ(const char* filename, MatrixD* V, MatrixD* VC, MatrixI* F);
+void WriteOBJ(const char* filename, const MatrixD& V, const MatrixD& VC, const MatrixI& F);
 
 #endif

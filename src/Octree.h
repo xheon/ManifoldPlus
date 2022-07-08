@@ -20,10 +20,10 @@ public:
 	bool IsExterior(const Vector3 &p);
 
 	bool Intersection(int face_index, const Vector3& min_corner,
-		const Vector3& size, const MatrixD& V);
+		const Vector3& size, const MatrixD& V, const MatrixD& VC);
 
 
-	void Split(const MatrixD& V);
+	void Split(const MatrixD& V, const MatrixD& VC);
 	void BuildConnection();
 	void ConnectTree(Octree* l, Octree* r, int dim);
 	void ConnectEmptyTree(Octree* l, Octree* r, int dim);
@@ -36,6 +36,7 @@ public:
 	void ConstructFace(const Vector3i& start,
 		std::map<GridIndex,int>* vcolor,
 		std::vector<Vector3>* vertices,
+		std::vector<Vector3>* vertex_colors,
 		std::vector<Vector4i>* faces,
 		std::vector<std::set<int> >* v_faces);
 

@@ -88,7 +88,7 @@ bool Octree::IsExterior(const Vector3& p)
 }
 
 bool Octree::Intersection(int Find_ex, const Vector3& min_corner,
-	const Vector3& size, const MatrixD& V)
+	const Vector3& size, const MatrixD& V, const MatrixD& VC)
 {
 	float boxcenter[3];
 	float boxhalfsize[3];
@@ -108,7 +108,7 @@ bool Octree::Intersection(int Find_ex, const Vector3& min_corner,
 	return TriBoxOverlap(boxcenter, boxhalfsize, triverts);
 }
 
-void Octree::Split(const MatrixD& V)
+void Octree::Split(const MatrixD& V, const MatrixD& VC)
 {
 	level_ += 1;
 	number_ = 0;
@@ -118,7 +118,7 @@ void Octree::Split(const MatrixD& V)
 				for (int k = 0; k < 2; ++k) {
 					int ind = i * 4 + j * 2 + k;
 					if (children_[ind] && children_[ind]->occupied_) {
-						children_[ind]->Split(V);
+						children_[ind]->Split(V, VC);
 						number_ += children_[ind]->number_;
 					}
 				}
@@ -144,7 +144,7 @@ void Octree::Split(const MatrixD& V)
 				children_[ind]->number_ = 0;
 
 				for (int face = 0; face < (int)F_.size(); ++face) {
-					if (Intersection(face, startpoint, halfsize, V)) {
+					if (Intersection(face, startpoint, halfsize, V, VC)) {
 						children_[ind]->F_.push_back(F_[face]);
 						children_[ind]->Find_.push_back(Find_[face]);
 						if (children_[ind]->occupied_ == 0) {
@@ -395,9 +395,11 @@ void Octree::BuildEmptyConnection()
 void Octree::ConstructFace(const Vector3i& start,
 	std::map<GridIndex,int>* vcolor,
 	std::vector<Vector3>* vertices,
+	std::vector<Vector3>* vertex_colors,
 	std::vector<Vector4i>* faces,
 	std::vector<std::set<int> >* v_faces)
 {
+//	printf("Level %d\n", level_);
 	if (level_ == 0)
 	{
 		if (!occupied_)
@@ -424,11 +426,15 @@ void Octree::ConstructFace(const Vector3i& start,
 					if (it == vcolor->end())
 					{
 						Vector3 d = min_corner_;
-						for (int k = 0; k < 3; ++k)
+						Vector3 c = min_corner_;
+						for (int k = 0; k < 3; ++k) {
 							d[k] += offset[i][j][k] * volume_size_[k];
+							c[k] += offset[i][j][k] * volume_size_[k];
+                        }
 						vcolor->insert(std::make_pair(v_id, vertices->size()));
 						id[j] = vertices->size();
 						vertices->push_back(d);
+						vertex_colors->push_back(c);
 						v_faces->push_back(std::set<int>());
 						for (std::vector<int>::iterator it1 = Find_.begin();
 							it1 != Find_.end(); ++it1)
@@ -455,7 +461,7 @@ void Octree::ConstructFace(const Vector3i& start,
 				int z = i - x * 4 - y * 2; 
 				Vector3i nstart = start * 2 + Vector3i(x,y,z);
 				children_[i]->ConstructFace(nstart, vcolor,
-					vertices, faces, v_faces);
+					vertices, vertex_colors, faces, v_faces);
 			}
 		}
 	}

@@ -18,8 +18,8 @@ public:
 	void IterativeOptimize(FT len, bool initialized = false);
 	void AdaptiveRefine(FT len, FT ratio = 0.1);
 	void EdgeFlipRefine(std::vector<int>& candidates);
-	void Project(const MatrixD& V, const MatrixI& F,
-		MatrixD* out_V, MatrixI* out_F);
+	void Project(const MatrixD& V, const MatrixD& VC, const MatrixI& F,
+		MatrixD* out_V, MatrixD* out_VC, MatrixI* out_F);
 	void UpdateNearestDistance();
 	int BoundaryCheck();
 	void SplitVertices();
@@ -36,6 +36,7 @@ private:
 
 	igl::AABB<MatrixD,3> tree_;
 	MatrixD V_, out_V_, target_V_, out_N_, out_FN_;
+	MatrixD VC_, out_VC_;
 	MatrixI F_, out_F_;
 	VectorXi V2E_, E2E_;
 
